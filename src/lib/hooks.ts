@@ -100,6 +100,96 @@ export function useSubstitutions() {
   return subs;
 }
 
+/**
+ * Fetches ALL ingredients across ALL recipes in a single query, grouped by
+ * recipe_id. Used by the Pantry Matcher to compute match scores without
+ * fetching each recipe's ingredients individually.
+ */
+export function useAllIngredients() {
+  const [byRecipe, setByRecipe] = useState<Record<string, Ingredient[]>>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    (async () => {
+      const { data } = await supabase
+        .from('ingredients')
+        .select('*')
+        .order('position', { ascending: true });
+      if (!active) return;
+      const grouped: Record<string, Ingredient[]> = {};
+      (data ?? []).forEach((ing) => {
+        const r = ing.recipe_id as string;
+        if (!grouped[r]) grouped[r] = [];
+        grouped[r].push(ing as Ingredient);
+      });
+      setByRecipe(grouped);
+      setLoading(false);
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return { byRecipe, loading };
+}
+
+/** Returns the set of distinct ingredient names across all recipes. */
+export function allIngredientNames(byRecipe: Record<string, Ingredient[]>): string[] {
+  const names = new Set<string>();
+  Object.values(byRecipe).forEach((ings) => {
+    ings.forEach((i) => names.add(i.name));
+  });
+  return Array.from(names).sort((a, b) => a.localeCompare(b));
+}
+
+export type PantryMatch = {
+  recipe: Recipe;
+  matched: string[];
+  missing: string[];
+  missingWithSubs: string[];
+  score: number; // 0-100
+};
+
+/**
+ * Computes a match score for each recipe against the pantry. The score is the
+ * percentage of the recipe's ingredients that are either in the pantry OR have
+ * a known AI substitution available for a missing ingredient.
+ */
+export function computePantryMatches(
+  recipes: Recipe[],
+  byRecipe: Record<string, Ingredient[]>,
+  pantry: Set<string>,
+  subs: Substitution[]
+): PantryMatch[] {
+  if (pantry.size === 0) return [];
+  const subNames = new Set(subs.map((s) => s.ingredient_name.toLowerCase()));
+
+  return recipes
+    .map((recipe) => {
+      const ings = byRecipe[recipe.id] ?? [];
+      if (ings.length === 0) return null;
+      const matched: string[] = [];
+      const missing: string[] = [];
+      const missingWithSubs: string[] = [];
+      ings.forEach((ing) => {
+        if (pantry.has(ing.name.toLowerCase())) {
+          matched.push(ing.name);
+        } else {
+          missing.push(ing.name);
+          if (subNames.has(ing.name.toLowerCase())) {
+            missingWithSubs.push(ing.name);
+          }
+        }
+      });
+      const covered = matched.length + missingWithSubs.length;
+      const score = Math.round((covered / ings.length) * 100);
+      return { recipe, matched, missing, missingWithSubs, score };
+    })
+    .filter((m): m is PantryMatch => m !== null)
+    .sort((a, b) => b.score - a.score);
+}
+
 export function useShoppingList() {
   const [items, setItems] = useState<{
     id: string;
@@ -218,4 +308,88 @@ export function groupByCuisine(recipes: Recipe[]): Record<Cuisine, Recipe[]> {
     if (r.cuisine) acc[r.cuisine].push(r);
     return acc;
   }, empty);
+}
+
+// ===== Speech & Audio =====
+
+/**
+ * Wraps the browser SpeechSynthesis API. Returns a `speak` function that
+ * cancels any in-flight utterance first, plus helpers to cancel and to check
+ * support. Voices load asynchronously in most browsers, so we warm them up on
+ * mount and refresh state when the `voiceschanged` event fires.
+ */
+export function useSpeech() {
+  const [supported] = useState(
+    () => typeof window !== 'undefined' && 'speechSynthesis' in window
+  );
+  const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
+
+  useEffect(() => {
+    if (!supported) return;
+    const load = () => setVoices(window.speechSynthesis.getVoices());
+    load();
+    window.speechSynthesis.addEventListener('voiceschanged', load);
+    return () => window.speechSynthesis.removeEventListener('voiceschanged', load);
+  }, [supported]);
+
+  const speak = useCallback(
+    (text: string, opts?: { rate?: number; pitch?: number }) => {
+      if (!supported || !text) return;
+      try {
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = opts?.rate ?? 0.95;
+        u.pitch = opts?.pitch ?? 1;
+        // Prefer a natural-sounding English voice if one is available.
+        const preferred =
+          voices.find((v) => /en[-_]US/i.test(v.lang) && /natural|google|samantha|aria/i.test(v.name)) ??
+          voices.find((v) => /^en/i.test(v.lang));
+        if (preferred) u.voice = preferred;
+        window.speechSynthesis.speak(u);
+      } catch {
+        /* no-op — speech not available in this browser */
+      }
+    },
+    [supported, voices]
+  );
+
+  const cancel = useCallback(() => {
+    if (supported) window.speechSynthesis.cancel();
+  }, [supported]);
+
+  return { supported, speak, cancel };
+}
+
+/**
+ * Plays a short three-note "ding" chime using the Web Audio API. No asset file
+ * needed — synthesized on the fly. Safe to call repeatedly.
+ */
+export function playChime(): void {
+  try {
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const now = ctx.currentTime;
+    const notes = [880, 1108.73, 1318.51]; // A5, C#6, E6 — a bright major triad
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      const start = now + i * 0.18;
+      const end = start + 0.5;
+      gain.gain.setValueAtTime(0, start);
+      gain.gain.linearRampToValueAtTime(0.3, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.001, end);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(start);
+      osc.stop(end + 0.05);
+    });
+    // Close the context after the last note to free resources.
+    window.setTimeout(() => ctx.close().catch(() => {}), 1200);
+  } catch {
+    /* no-op — audio not available */
+  }
 }

@@ -1,13 +1,15 @@
 import { useEffect, useState } from 'react';
-import { ChefHat, Mic, ShoppingBasket, Volume2, X } from 'lucide-react';
+import { ChefHat, Mic, ShoppingBasket, UtensilsCrossed, Volume2, X } from 'lucide-react';
 import { useRecipes, useShoppingList } from '@/lib/hooks';
 import type { Recipe } from '@/lib/supabase';
 import { RecipeBrowser } from '@/components/RecipeBrowser';
 import { RecipeCook } from '@/components/RecipeCook';
 import { ShoppingPanel } from '@/components/ShoppingPanel';
+import { PantryMatcher } from '@/components/PantryMatcher';
 
 type Screen =
   | { kind: 'browse' }
+  | { kind: 'pantry' }
   | { kind: 'cook'; recipeId: string }
   | { kind: 'shopping' };
 
@@ -38,6 +40,7 @@ export function App() {
       <div className="relative z-10 mx-auto max-w-[1760px] px-10 py-8">
         <Header
           onHome={() => setScreen({ kind: 'browse' })}
+          onPantry={() => setScreen({ kind: 'pantry' })}
           onShopping={() => setScreen({ kind: 'shopping' })}
           shoppingCount={shopping.items.length}
           onVoice={() => setVoiceOpen(true)}
@@ -51,7 +54,20 @@ export function App() {
           )}
 
           {screen.kind === 'browse' && (
-            <RecipeBrowser recipes={recipes} loading={loading} onOpen={openRecipe} />
+            <RecipeBrowser
+              recipes={recipes}
+              loading={loading}
+              onOpen={openRecipe}
+              onPantry={() => setScreen({ kind: 'pantry' })}
+            />
+          )}
+
+          {screen.kind === 'pantry' && (
+            <PantryMatcher
+              recipes={recipes}
+              onOpen={openRecipe}
+              onClose={() => setScreen({ kind: 'browse' })}
+            />
           )}
 
           {screen.kind === 'cook' && (
@@ -90,11 +106,13 @@ export function App() {
 
 function Header({
   onHome,
+  onPantry,
   onShopping,
   shoppingCount,
   onVoice,
 }: {
   onHome: () => void;
+  onPantry: () => void;
   onShopping: () => void;
   shoppingCount: number;
   onVoice: () => void;
@@ -112,6 +130,13 @@ function Header({
       </button>
 
       <div className="flex items-center gap-4">
+        <button
+          onClick={onPantry}
+          className="tv-focusable flex items-center gap-3 rounded-2xl border border-emerald-400/40 bg-emerald-400/10 px-5 py-3 text-lg font-semibold text-emerald-300 transition hover:bg-emerald-400/20"
+        >
+          <UtensilsCrossed size={22} />
+          What's in My Kitchen?
+        </button>
         <button
           onClick={onVoice}
           className="tv-focusable flex items-center gap-3 rounded-2xl border border-amber-400/40 bg-amber-400/10 px-5 py-3 text-lg font-semibold text-amber-300 transition hover:bg-amber-400/20"
