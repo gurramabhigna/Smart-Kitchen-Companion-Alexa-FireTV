@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  font-size: 20px;
+  background: #0c0a09;
+}
+
+body {
+  font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  margin: 0;
+  background: #0c0a09;
+}
+
+/* Lock to 16:9 Fire TV viewport, no horizontal overflow */
+#root {
+  width: 100vw;
+  overflow-x: hidden;
+}
+
+/* Fire TV focus rings — visible D-pad navigation highlight */
+.tv-focusable:focus {
+  outline: none;
+  box-shadow:
+    0 0 0 3px rgba(251, 191, 36, 0.9),
+    0 0 0 6px rgba(251, 191, 36, 0.25),
+    0 12px 30px rgba(0, 0, 0, 0.5);
+  transform: translateY(-2px);
+  transition: box-shadow 120ms ease, transform 120ms ease;
+}
+
+.tv-focusable:focus-visible {
+  outline: none;
+}
+
+.tv-focusable {
+  transition: box-shadow 120ms ease, transform 120ms ease, border-color 120ms ease;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(120, 113, 108, 0.4);
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
