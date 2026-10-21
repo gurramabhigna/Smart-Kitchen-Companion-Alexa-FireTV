@@ -10,8 +10,9 @@
 
 ### Installation & Setup
 1. Clone the repository:
-   ```bash
-   git clone [https://github.com/gurramabhigna/Smart-Kitchen-Companion-Alexa-FireTV.git](https://github.com/gurramabhigna/Smart-Kitchen-Companion-Alexa-FireTV.git)
+```bash
+git clone [https://github.com/gurramabhigna/Smart-Kitchen-Companion-Alexa-FireTV.git](https://github.com/gurramabhigna/Smart-Kitchen-Companion-Alexa-FireTV.git)
 cd Smart-Kitchen-Companion-Alexa-FireTV
 npm install
 npm run dev
+```
